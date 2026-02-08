@@ -217,12 +217,27 @@ Regole firewall per i servizi esposti:
 | 5678 | TCP | n8n |
 | * | * | Egress illimitato |
 
+#### Key Pair SSH
+Per l'accesso SSH all'istanza viene creato un key pair gestito da Terraform:
+
+```hcl
+resource "aws_key_pair" "selfhealing_key" {
+  key_name   = "selfhealing-key"
+  public_key = file("${path.module}/../../../.ssh/selfhealing-key.pub")
+}
+```
+
+La chiave pubblica viene letta dal file `.ssh/selfhealing-key.pub` nella root del progetto.
+
 #### Istanza EC2 con User Data
 L'istanza viene configurata automaticamente al boot tramite `user_data`:
 1. Aggiorna il sistema operativo
-2. Installa Docker e Docker Compose
+2. Installa Docker e Docker Compose (ultima versione stabile)
 3. Crea `/opt/stack/docker-compose.yml` con lo stack applicativo
 4. Avvia i container (n8n, Grafana, nginx)
+
+**Configurazione n8n:**
+- `N8N_SECURE_COOKIE=false` - Necessario per funzionamento su HTTP senza HTTPS
 
 ---
 
@@ -291,8 +306,8 @@ Apply complete! Resources: 2 added, 0 changed, 0 destroyed.
 
 Outputs:
 
-ec2_public_dns = "ec2-15-161-49-65.eu-south-1.compute.amazonaws.com"
-ec2_public_ip = "15.161.49.65"
+ec2_public_dns = "ec2-15-160-248-245.eu-south-1.compute.amazonaws.com"
+ec2_public_ip = "15.160.248.245"
 ```
 
 ---
@@ -304,8 +319,8 @@ terraform output
 ```
 
 ```
-ec2_public_dns = "ec2-15-161-49-65.eu-south-1.compute.amazonaws.com"
-ec2_public_ip = "15.161.49.65"
+ec2_public_dns = "ec2-15-160-248-245.eu-south-1.compute.amazonaws.com"
+ec2_public_ip = "15.160.248.245"
 ```
 
 ---
@@ -314,6 +329,7 @@ ec2_public_ip = "15.161.49.65"
 
 | Risorsa | ID | Dettagli |
 |---------|-----|----------|
+| Key Pair | `selfhealing-key` | Chiave SSH per accesso EC2 |
 | Security Group | `sg-08dec74fce841757f` | `selfhealing-monitoring-sg` |
 | EC2 Instance | `i-0c80ef1da5ac8a3f4` | `t3.micro`, Amazon Linux 2023 |
 
@@ -323,9 +339,9 @@ ec2_public_ip = "15.161.49.65"
 
 | Servizio | URL | Stato |
 |----------|-----|-------|
-| nginx (App demo) | http://15.161.49.65 | ✅ Attivo |
-| Grafana | http://15.161.49.65:3000 | ✅ Attivo |
-| n8n | http://15.161.49.65:5678 | ✅ Attivo |
+| nginx (App demo) | http://15.160.248.245 | ✅ Attivo |
+| Grafana | http://15.160.248.245:3000 | ✅ Attivo |
+| n8n | http://15.160.248.245:5678 | ✅ Attivo |
 
 ---
 
@@ -333,6 +349,7 @@ ec2_public_ip = "15.161.49.65"
 
 Con l'infrastruttura base pronta, i prossimi step del progetto prevedono:
 
+0. **Elastic IP** - Assegnazione indirizzo statico all'EC2
 1. **CloudWatch Alarms** - Definizione allarmi su CPU, disk, status check
 2. **SNS Topic** - Target per gli allarmi, subscriber webhook n8n
 3. **IAM Role per EC2** - Permessi per SSM Run Command e CloudWatch
