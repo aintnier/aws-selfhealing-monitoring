@@ -1,5 +1,6 @@
 .ssh/
 *.pem
+.agent/
 
 # Terraform
 .terraform/
