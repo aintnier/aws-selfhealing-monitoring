@@ -72,10 +72,17 @@ data "aws_vpc" "default" {
   default = true
 }
 
+resource "aws_key_pair" "selfhealing_key" {
+  key_name   = "selfhealing-key"
+  public_key = file("${path.module}/../../../.ssh/selfhealing-key.pub")
+}
+
+
 resource "aws_instance" "monitoring_ec2" {
   ami                    = data.aws_ami.amazon_linux_2023.id
   instance_type          = var.instance_type
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
+  key_name               = aws_key_pair.selfhealing_key.key_name
 
   tags = {
     Name = "${var.project_name}-ec2"
@@ -88,7 +95,7 @@ resource "aws_instance" "monitoring_ec2" {
     systemctl enable docker
     systemctl start docker
 
-    curl -L "https://github.com/docker/compose/releases/download/2.27.0/docker-compose-linux-x86_64" -o /usr/local/bin/docker-compose
+    curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64" -o /usr/local/bin/docker-compose
     chmod +x /usr/local/bin/docker-compose
 
     mkdir -p /opt/stack
@@ -104,6 +111,7 @@ resource "aws_instance" "monitoring_ec2" {
         environment:
           - N8N_BASIC_AUTH_ACTIVE=false
           - N8N_HOST=localhost
+          - N8N_SECURE_COOKIE=false
         volumes:
           - n8n_data:/home/node/.n8n
 
