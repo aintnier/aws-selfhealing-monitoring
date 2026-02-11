@@ -6,7 +6,7 @@ Questo documento descrive il setup dell'infrastruttura AWS per la **piattaforma 
 
 ### Obiettivo
 
-Provisioning automatizzato tramite Terraform di un'istanza EC2 nella regione `eu-south-1` (Milano) che ospita lo stack applicativo via Docker:
+Provisioning automatizzato tramite Terraform di un'istanza EC2 nella regione `eu-south-1` (Milano) con Elastic IP statico, che ospita lo stack applicativo via Docker:
 
 | Servizio | Porta | Funzione |
 |----------|-------|----------|
@@ -14,20 +14,21 @@ Provisioning automatizzato tramite Terraform di un'istanza EC2 nella regione `eu
 | **Grafana** | 3000 | Dashboard di osservabilità |
 | **nginx** | 80 | App demo (target per test failure) |
 
-### Architettura Target
+### Architettura
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         AWS eu-south-1                          │
 │  ┌───────────────────────────────────────────────────────────┐  │
-│  │                    VPC Default                            │  │
+│  │                       VPC Default                         │  │
 │  │  ┌─────────────────────────────────────────────────────┐  │  │
-│  │  │              EC2 t3.micro (Amazon Linux 2023)       │  │  │
-│  │  │  ┌─────────┐  ┌─────────┐  ┌─────────┐              │  │  │
-│  │  │  │  nginx  │  │ Grafana │  │   n8n   │              │  │  │
-│  │  │  │  :80    │  │  :3000  │  │  :5678  │              │  │  │
-│  │  │  └─────────┘  └─────────┘  └─────────┘              │  │  │
-│  │  │              Docker Compose                         │  │  │
+│  │  │           EC2 t3.micro (Amazon Linux 2023)          │  │  │
+│  │  │               Elastic IP: 51.118.61.93              │  │  │
+│  │  │         ┌─────────┐  ┌─────────┐  ┌─────────┐       │  │  │
+│  │  │         │  nginx  │  │ Grafana │  │   n8n   │       │  │  │
+│  │  │         │  :80    │  │  :3000  │  │  :5678  │       │  │  │
+│  │  │         └─────────┘  └─────────┘  └─────────┘       │  │  │
+│  │  │                   Docker Compose                    │  │  │
 │  │  └─────────────────────────────────────────────────────┘  │  │
 │  └───────────────────────────────────────────────────────────┘  │
 │                                                                 │
@@ -43,13 +44,13 @@ Lo state di Terraform viene salvato remotamente su S3 per persistenza e collabor
 
 ## Prerequisiti
 
-### 0. Installazione AWS CLI
+### Installazione AWS CLI
 
 Installata AWS CLI versione **2.33.17** per l'interazione con i servizi AWS da terminale.
 
 ---
 
-## Step di Configurazione
+## Configurazione
 
 ### 1. Creazione utenza IAM per Terraform
 
@@ -107,18 +108,21 @@ git init
 ```bash
 mkdir -p terraform/environments/dev
 cd terraform/environments/dev
-touch main.tf variables.tf outputs.tf backend.tf
 ```
+
+I file Terraform sono organizzati **per servizio AWS**: ogni risorsa è isolata in un file dedicato, semplificando la manutenzione. Terraform carica automaticamente tutti i file `.tf` presenti nella stessa directory.
 
 Struttura risultante:
 ```
 terraform/
 └── environments/
     └── dev/
-        ├── backend.tf    # Backend S3 per state
-        ├── main.tf       # Risorse AWS
-        ├── outputs.tf    # Output post-deploy
-        └── variables.tf  # Variabili configurabili
+        ├── backend.tf       # Backend S3 per state
+        ├── main.tf          # Provider AWS + data sources (AMI, VPC)
+        ├── ec2.tf           # Security Group, Key Pair, EC2, Elastic IP
+        ├── cloudwatch.tf    # CloudWatch Alarms (CPU, StatusCheck)
+        ├── variables.tf     # Variabili configurabili
+        └── outputs.tf       # Output post-deploy
 ```
 
 ---
@@ -169,18 +173,22 @@ variable "project_name" {
 Espone valori utili post-deploy, consultabili con `terraform output`.
 
 ```hcl
-output "ec2_public_ip" {
-  value = aws_instance.monitoring_ec2.public_ip
+output "elastic_ip" {
+  description = "Elastic IP associato all'istanza EC2"
+  value       = aws_eip.monitoring_eip.public_ip
 }
 
 output "ec2_public_dns" {
-  value = aws_instance.monitoring_ec2.public_dns
+  description = "DNS pubblico dell'istanza EC2"
+  value       = aws_instance.monitoring_ec2.public_dns
 }
 ```
 
 ---
 
-### `main.tf` - Risorse AWS
+### `main.tf` - Provider e Data Sources
+
+Contiene il provider AWS e i data source condivisi da tutte le risorse.
 
 #### Provider AWS
 ```hcl
@@ -205,6 +213,12 @@ data "aws_ami" "amazon_linux_2023" {
   owners = ["amazon"]
 }
 ```
+
+---
+
+### `ec2.tf` - Istanza EC2, Security Group, Key Pair, Elastic IP
+
+Contiene tutte le risorse legate all'istanza EC2.
 
 #### Security Group
 Regole firewall per i servizi esposti:
@@ -239,6 +253,75 @@ L'istanza viene configurata automaticamente al boot tramite `user_data`:
 **Configurazione n8n:**
 - `N8N_SECURE_COOKIE=false` - Necessario per funzionamento su HTTP senza HTTPS
 
+#### Elastic IP
+Assegnato un Elastic IP all'istanza EC2 per garantire un indirizzo IP pubblico **statico e persistente**, che non cambia in caso di stop/start dell'istanza.
+
+```hcl
+resource "aws_eip" "monitoring_eip" {
+  instance = aws_instance.monitoring_ec2.id
+  domain   = "vpc"
+
+  tags = {
+    Name = "${var.project_name}-eip"
+  }
+}
+```
+
+**Elastic IP assegnato**: `51.118.61.93`
+
+---
+
+### `cloudwatch.tf` - CloudWatch Alarms
+
+Contiene gli allarmi CloudWatch per il monitoring dell'istanza EC2.
+
+#### Alarm CPU High
+Scatta quando la CPU supera l'80% per **2 periodi consecutivi** da 5 minuti.
+
+```hcl
+resource "aws_cloudwatch_metric_alarm" "cpu_high" {
+  alarm_name          = "${var.project_name}-cpu-high"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/EC2"
+  period              = 300
+  statistic           = "Average"
+  threshold           = 80
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    InstanceId = aws_instance.monitoring_ec2.id
+  }
+}
+```
+
+#### Alarm Status Check Failed
+Scatta immediatamente quando un health check EC2 fallisce (periodo 60s, 1 evaluation).
+
+```hcl
+resource "aws_cloudwatch_metric_alarm" "status_check_failed" {
+  alarm_name          = "${var.project_name}-status-check-failed"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "StatusCheckFailed"
+  namespace           = "AWS/EC2"
+  period              = 60
+  statistic           = "Maximum"
+  threshold           = 0
+  treat_missing_data  = "breaching"
+
+  dimensions = {
+    InstanceId = aws_instance.monitoring_ec2.id
+  }
+}
+```
+
+| Alarm | Metrica | Soglia | Periodi | Intervallo |
+|-------|---------|--------|---------|------------|
+| `cpu-high` | CPUUtilization | > 80% | 2 | 300s (5 min) |
+| `status-check-failed` | StatusCheckFailed | > 0 | 1 | 60s |
+
 ---
 
 ## Esecuzione Terraform
@@ -263,10 +346,11 @@ Terraform has been successfully initialized!
 
 ---
 
-### 6. Pianificazione (dry-run)
+### 6. Pianificazione e Applicazione
 
 ```bash
 terraform plan
+terraform apply
 ```
 
 **Output (sintesi):**
@@ -285,53 +369,21 @@ Risorse pianificate:
 - `aws_security_group.ec2_sg`
 - `aws_instance.monitoring_ec2`
 
----
-
-### 7. Applicazione
-
-```bash
-terraform apply
-```
-
-Dopo conferma con `yes`:
-
-**Output:**
-```
-aws_security_group.ec2_sg: Creating...
-aws_security_group.ec2_sg: Creation complete after 3s [id=sg-08dec74fce841757f]
-aws_instance.monitoring_ec2: Creating...
-aws_instance.monitoring_ec2: Creation complete after 33s [id=i-0c80ef1da5ac8a3f4]
-
-Apply complete! Resources: 2 added, 0 changed, 0 destroyed.
-
-Outputs:
-
-ec2_public_dns = "ec2-15-160-248-245.eu-south-1.compute.amazonaws.com"
-ec2_public_ip = "15.160.248.245"
-```
-
----
-
-### 8. Verifica output
-
-```bash
-terraform output
-```
-
-```
-ec2_public_dns = "ec2-15-160-248-245.eu-south-1.compute.amazonaws.com"
-ec2_public_ip = "15.160.248.245"
-```
+Deploy completato con successo. Tutte le risorse create e operazionali.
 
 ---
 
 ## Risorse Create
 
-| Risorsa | ID | Dettagli |
-|---------|-----|----------|
+| Risorsa | Nome/ID | Dettagli |
+|---------|---------|----------|
+| S3 Bucket | `terraform-state-selfhealing-1770562384` | State Terraform |
 | Key Pair | `selfhealing-key` | Chiave SSH per accesso EC2 |
-| Security Group | `sg-08dec74fce841757f` | `selfhealing-monitoring-sg` |
-| EC2 Instance | `i-0c80ef1da5ac8a3f4` | `t3.micro`, Amazon Linux 2023 |
+| Security Group | `selfhealing-monitoring-sg` | Porte: 22, 80, 3000, 5678 |
+| EC2 Instance | `selfhealing-monitoring-ec2` | t3.micro, Amazon Linux 2023 |
+| Elastic IP | `selfhealing-monitoring-eip` | `51.118.61.93` |
+| CW Alarm | `selfhealing-monitoring-cpu-high` | CPU > 80% (2×5min) |
+| CW Alarm | `selfhealing-monitoring-status-check-failed` | StatusCheckFailed |
 
 ---
 
@@ -339,19 +391,6 @@ ec2_public_ip = "15.160.248.245"
 
 | Servizio | URL | Stato |
 |----------|-----|-------|
-| nginx (App demo) | http://15.160.248.245 | ✅ Attivo |
-| Grafana | http://15.160.248.245:3000 | ✅ Attivo |
-| n8n | http://15.160.248.245:5678 | ✅ Attivo |
-
----
-
-## Prossimi Step
-
-Con l'infrastruttura base pronta, i prossimi step del progetto prevedono:
-
-0. **Elastic IP** - Assegnazione indirizzo statico all'EC2
-1. **CloudWatch Alarms** - Definizione allarmi su CPU, disk, status check
-2. **SNS Topic** - Target per gli allarmi, subscriber webhook n8n
-3. **IAM Role per EC2** - Permessi per SSM Run Command e CloudWatch
-4. **Workflow n8n** - Implementazione logica self-healing
-5. **Dashboard Grafana** - Configurazione datasource CloudWatch
+| nginx (App demo) | http://51.118.61.93 | ✅ Attivo |
+| Grafana | http://51.118.61.93:3000 | ✅ Attivo |
+| n8n | http://51.118.61.93:5678 | ✅ Attivo |
