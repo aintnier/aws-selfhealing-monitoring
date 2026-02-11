@@ -4,7 +4,7 @@
 
 resource "aws_security_group" "ec2_sg" {
   name        = "${var.project_name}-sg"
-  description = "Security group for Control Node (n8n + Grafana)"
+  description = "Security group for self-healing EC2"
   vpc_id      = data.aws_vpc.default.id
 
   ingress {
@@ -65,13 +65,6 @@ resource "aws_instance" "monitoring_ec2" {
 
   user_data = <<-EOF
     #!/bin/bash
-    # Add 2GB Swap for t3.micro/small stability
-    dd if=/dev/zero of=/swapfile bs=128M count=16
-    chmod 600 /swapfile
-    mkswap /swapfile
-    swapon /swapfile
-    echo "/swapfile swap swap defaults 0 0" >> /etc/fstab
-
     yum update -y
     yum install -y docker
     systemctl enable docker
@@ -96,6 +89,7 @@ resource "aws_instance" "monitoring_ec2" {
           - N8N_SECURE_COOKIE=false
         volumes:
           - n8n_data:/home/node/.n8n
+        restart: unless-stopped
 
       grafana:
         image: grafana/grafana-oss:latest
@@ -103,6 +97,7 @@ resource "aws_instance" "monitoring_ec2" {
           - "3000:3000"
         volumes:
           - grafana_data:/var/lib/grafana
+        restart: unless-stopped
 
     volumes:
       n8n_data:
