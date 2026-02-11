@@ -135,3 +135,12 @@ resource "aws_instance" "monitoring_ec2" {
     /usr/local/bin/docker-compose up -d
   EOF
 }
+
+resource "aws_eip" "monitoring_eip" {
+  instance = aws_instance.monitoring_ec2.id
+  domain   = "vpc"
+
+  tags = {
+    Name = "${var.project_name}-eip"
+  }
+}
