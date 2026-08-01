@@ -10,7 +10,7 @@ Il progetto nasce dall'esigenza concreta, nel contesto delle moderne pratiche SR
 
 ## Architettura del Sistema
 
-L'architettura della piattaforma si basa su un modello a **due nodi** dislocati nella regione AWS eu-south-1 (Milano), ciascuno con un ruolo funzionale distinto, affiancati da un database relazionale managed.
+L'architettura della piattaforma si basa su un modello a **due nodi** dislocati nella regione AWS eu-south-1 (Milano), ciascuno con un ruolo funzionale distinto.
 
 ### Control Node ("Il Dottore")
 
@@ -32,15 +32,11 @@ Il secondo nodo EC2 rappresenta il **target monitorato**, ovvero il nodo che sim
 
 Il Worker Node è il principale soggetto delle operazioni di chaos testing e self-healing: è su di esso che vengono iniettati i guasti simulati e applicate le correzioni automatiche.
 
-### Database RDS
 
-Un'istanza **RDS MySQL** managed completa l'architettura, fornendo un database relazionale persistente. Il database è predisposto per il logging strutturato degli eventi di self-healing (timestamp, tipo di incidente, azione intrapresa, esito), consentendo analisi storiche e alimentando dashboard Grafana con lo storico degli interventi automatici.
-
----
 
 ## Provisioning e Infrastructure as Code
 
-L'intera infrastruttura è provisionata e gestita tramite **Terraform**, seguendo rigorosamente il paradigma Infrastructure as Code (IaC). Ogni risorsa AWS - istanze EC2, security group, RDS, SNS topics, CloudWatch alarms, IAM roles, Elastic IP - è definita dichiarativamente in file Terraform organizzati per funzione.
+L'intera infrastruttura è provisionata e gestita tramite **Terraform**, seguendo rigorosamente il paradigma Infrastructure as Code (IaC). Ogni risorsa AWS - istanze EC2, security group, SNS topics, CloudWatch alarms, IAM roles, Elastic IP - è definita dichiarativamente in file Terraform organizzati per funzione.
 
 Lo **state di Terraform** è conservato remotamente su un bucket **S3**, garantendo la condivisione dello stato tra i membri del team e la protezione contro la perdita accidentale dello state locale. La struttura del codice Terraform è modulare, organizzata per ambienti (`environments/dev/`), e progettata per essere **idempotente**: ogni `terraform apply` produce risultati predicibili e ripetibili senza effetti collaterali.
 
@@ -134,7 +130,7 @@ Questo approccio rende il sistema più **flessibile e adattivo**: l'agente AI pu
 
 - Metriche in tempo reale del Worker Node: utilizzo CPU, memoria RAM, spazio disco, traffico di rete, stato dell'istanza.
 - Stato corrente dei CloudWatch Alarms (OK/ALARM/INSUFFICIENT_DATA) per avere una vista immediata della salute dell'infrastruttura.
-- Storico degli eventi di self-healing, alimentato dai log memorizzati nel database RDS, che consente all'operatore di analizzare trend, frequenza degli incidenti e tempi di recovery.
+- Storico degli eventi di self-healing, visualizzato tramite le Annotations di Grafana, che consente all'operatore di analizzare trend, frequenza degli incidenti e tempi di recovery visivamente sui grafici.
 
 L'autenticazione di Grafana verso CloudWatch avviene tramite il **IAM Role** assegnato all'istanza EC2 del Control Node, senza necessità di configurare credenziali statiche.
 
@@ -144,7 +140,7 @@ L'autenticazione di Grafana verso CloudWatch avviene tramite il **IAM Role** ass
 
 La piattaforma adotta diverse misure di sicurezza:
 
-- **Security Group** dedicati per ciascun tier (Control, Worker, Database), configurati con il principio del minimo privilegio per limitare il traffico di rete alle sole comunicazioni necessarie.
+- **Security Group** dedicati per ciascun tier (Control, Worker), configurati con il principio del minimo privilegio per limitare il traffico di rete alle sole comunicazioni necessarie.
 - **Reverse proxy Nginx con TLS** (certificato self-signed) sul Control Node, che cifra il traffico tra l'operatore e i pannelli di gestione n8n/Grafana.
 - **IAM Role** con policy restrittive assegnati alle istanze EC2, che evitano l'uso di credenziali statiche e garantiscono il principio del minimo privilegio per l'accesso ai servizi AWS (SSM, CloudWatch).
 - **Webhook n8n accessibile solo internamente** alla VPC per le comunicazioni machine-to-machine con SNS, mentre l'accesso dell'operatore avviene esclusivamente tramite HTTPS.
@@ -172,7 +168,6 @@ Il progetto integra un ampio ventaglio di tecnologie cloud e DevOps:
 | ---------------------- | --------------------------------- | -------------------------------------------------------- |
 | Infrastructure as Code | Terraform                         | Provisioning dichiarativo di tutte le risorse AWS        |
 | Compute                | EC2 (Amazon Linux 2023)           | Hosting dei nodi Control e Worker                        |
-| Database               | RDS MySQL                         | Storage persistente managed per logging eventi           |
 | Containerizzazione     | Docker + Docker Compose           | Runtime isolato per tutti i servizi applicativi          |
 | Automazione            | n8n                               | Workflow engine per self-healing e orchestrazione        |
 | Monitoring             | CloudWatch + CloudWatch Agent     | Raccolta metriche native e custom, gestione allarmi      |
@@ -190,7 +185,7 @@ Il progetto integra un ampio ventaglio di tecnologie cloud e DevOps:
 
 Il progetto è progettato per dimostrare in modo pratico un ampio insieme di competenze trasversali nell'ambito del Cloud Administration:
 
-- **AWS Cloud Services**: utilizzo integrato di EC2, RDS, S3, SNS, CloudWatch, IAM, VPC e Security Groups.
+- **AWS Cloud Services**: utilizzo integrato di EC2, S3, SNS, CloudWatch, IAM, VPC e Security Groups.
 - **Infrastructure as Code**: provisioning completo tramite Terraform con state remoto, struttura modulare e best practice di idempotenza.
 - **Versionamento**: utilizzo di Git per il controllo di versione del codice sorgente e della configurazione dell'infrastruttura.
 - **Containerizzazione**: deployment di applicazioni multi-container con Docker Compose, gestione volumi persistenti e networking Docker.

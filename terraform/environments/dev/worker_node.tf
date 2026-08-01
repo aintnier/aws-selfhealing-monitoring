@@ -100,43 +100,6 @@ resource "aws_instance" "worker_node" {
     mkdir -p /opt/app
     cd /opt/app
 
-    # Create .env file with DB details
-    cat > .env << 'ENV'
-    DB_HOST=${aws_db_instance.app_db.address}
-    DB_User=${var.db_username}
-    DB_PASSWORD=${var.db_password}
-    DB_NAME=${var.db_name}
-    ENV
-
-    # Simple DB Check Script (Python)
-    cat > db_check.py << 'PY'
-    import mysql.connector
-    import os
-    import time
-
-    def check_db():
-        max_retries = 30
-        for i in range(max_retries):
-            try:
-                conn = mysql.connector.connect(
-                    host=os.environ['DB_HOST'],
-                    user=os.environ['DB_USER'],
-                    password=os.environ['DB_PASSWORD'],
-                    database=os.environ['DB_NAME']
-                )
-                if conn.is_connected():
-                    print("Database Connection: SUCCESS")
-                    conn.close()
-                    return True
-            except Exception as e:
-                print(f"Waiting for DB... ({i+1}/{max_retries}) - {e}")
-                time.sleep(10)
-        return False
-
-    if __name__ == "__main__":
-        check_db()
-    PY
-
     cat > index.html << 'HTML'
     <!DOCTYPE html>
     <html>
@@ -145,14 +108,12 @@ resource "aws_instance" "worker_node" {
       body { font-family: sans-serif; text-align: center; padding: 50px; background: #f0f2f5; }
       h1 { color: #1a73e8; }
       .status { font-size: 20px; color: green; }
-      .db { font-size: 16px; color: #555; margin-top: 10px; }
     </style>
     </head>
     <body>
       <h1>Worker Node (Patient)</h1>
       <p class="status">System Operational (v2 Premium)</p>
-      <p>Services: Nginx &bull; Redis &bull; RDS MySQL</p>
-      <p class="db">Database: <strong>Connected</strong> (Managed RDS)</p>
+      <p>Services: Nginx &bull; Redis</p>
     </body>
     </html>
     HTML
@@ -175,14 +136,6 @@ resource "aws_instance" "worker_node" {
         ports:
           - "6379:6379"
         restart: unless-stopped
-        
-      # Optional: DB connectivity check container
-      # db_check:
-      #   image: python:3.9-slim
-      #   volumes:
-      #     - ./db_check.py:/app/db_check.py
-      #     - ./.env:/app/.env
-      #   command: sh -c "pip install mysql-connector-python && python /app/db_check.py"
     EOC
 
 

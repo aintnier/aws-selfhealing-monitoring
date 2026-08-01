@@ -22,10 +22,6 @@ output "worker_node_private_ip" {
   value       = aws_instance.worker_node.private_ip
 }
 
-output "rds_endpoint" {
-  description = "Endpoint RDS MySQL"
-  value       = aws_db_instance.app_db.endpoint
-}
 
 output "sns_topic_arn" {
   description = "ARN del SNS Topic per gli allarmi"

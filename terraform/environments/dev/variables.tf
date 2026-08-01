@@ -18,28 +18,6 @@ variable "project_name" {
   default = "selfhealing-monitoring"
 }
 
-# ── RDS ──
-variable "db_instance_class" {
-  description = "RDS instance class"
-  default     = "db.t3.small"
-}
-
-variable "db_name" {
-  description = "Application database name"
-  default     = "app_db"
-}
-
-variable "db_username" {
-  description = "Database admin username"
-  default     = "admin"
-}
-
-variable "db_password" {
-  description = "Database admin password"
-  type        = string
-  default     = "SelfHealing2024!"
-  sensitive   = true
-}
 
 # ── SNS ──
 variable "alert_email" {
