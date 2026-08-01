@@ -1,0 +1,109 @@
+{
+  "name": "AWS Self-Healing Demo",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cloudwatch-alerts",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "cloudwatch-alerts"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json[\"headers\"][\"x-amz-sns-message-type\"] }}",
+              "value2": "SubscriptionConfirmation"
+            }
+          ]
+        }
+      },
+      "name": "IF Subscription",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ typeof $json[\"body\"] === 'string' ? JSON.parse($json[\"body\"])[\"SubscribeURL\"] : $json[\"body\"][\"SubscribeURL\"] }}",
+        "options": {}
+      },
+      "name": "Confirm Subscription",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        680,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://16.22.20.11:3000/api/annotations",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "=AWS Alarm: {{ typeof $json[\"body\"] === 'string' ? JSON.parse($json[\"body\"])[\"Message\"] : $json[\"body\"][\"Message\"] }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Grafana Annotation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        680,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "IF Subscription",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Subscription": {
+      "main": [
+        [
+          {
+            "node": "Confirm Subscription",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Grafana Annotation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {}
+}
