@@ -1,0 +1,165 @@
+{
+  "name": "Healing 2 - CPU Overload",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Alarm Received",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "command": "kill -9 $(ps aux --sort=-%cpu | grep -v PID | head -1 | awk '{print $2}') 2>/dev/null; echo 'Top CPU process killed'"
+      },
+      "name": "L1 - Kill Top CPU Process",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": {
+        "sshPassword": {
+          "id": "AZJNKVBkx1kjta7Z",
+          "name": "Worker Node SSH"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 90,
+        "unit": "seconds"
+      },
+      "name": "Wait 90s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "command": "cpu=$(top -bn1 | grep 'Cpu(s)' | awk '{print 100 - $8}'); echo $cpu"
+      },
+      "name": "Check CPU",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "credentials": {
+        "sshPassword": {
+          "id": "AZJNKVBkx1kjta7Z",
+          "name": "Worker Node SSH"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "" },
+          "conditions": [
+            {
+              "leftValue": "={{ parseFloat($json.stdout) }}",
+              "rightValue": 80,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "name": "Still High?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "command": "sudo reboot"
+      },
+      "name": "L2 - Reboot Instance",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [1340, 200],
+      "credentials": {
+        "sshPassword": {
+          "id": "AZJNKVBkx1kjta7Z",
+          "name": "Worker Node SSH"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://grafana:3000/api/annotations",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: '[Healing 2] CPU Overload — L1: Kill top process — Result: OK', tags: ['self-healing', 'cpu-overload'] }) }}"
+      },
+      "name": "Annotation - L1 OK",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "3ZUB5dPlNwNIeiR0",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://grafana:3000/api/annotations",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: '[Healing 2] CPU Overload — L1 FAILED — L2: Reboot Instance', tags: ['self-healing', 'cpu-overload', 'escalation'] }) }}"
+      },
+      "name": "Annotation - L2 Escalation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "3ZUB5dPlNwNIeiR0",
+          "name": "Header Auth account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Alarm Received": {
+      "main": [
+        [{ "node": "L1 - Kill Top CPU Process", "type": "main", "index": 0 }]
+      ]
+    },
+    "L1 - Kill Top CPU Process": {
+      "main": [
+        [{ "node": "Wait 90s", "type": "main", "index": 0 }]
+      ]
+    },
+    "Wait 90s": {
+      "main": [
+        [{ "node": "Check CPU", "type": "main", "index": 0 }]
+      ]
+    },
+    "Check CPU": {
+      "main": [
+        [{ "node": "Still High?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Still High?": {
+      "main": [
+        [{ "node": "L2 - Reboot Instance", "type": "main", "index": 0 }],
+        [{ "node": "Annotation - L1 OK", "type": "main", "index": 0 }]
+      ]
+    },
+    "L2 - Reboot Instance": {
+      "main": [
+        [{ "node": "Annotation - L2 Escalation", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

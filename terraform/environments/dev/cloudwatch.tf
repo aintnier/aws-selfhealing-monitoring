@@ -60,7 +60,7 @@ resource "aws_cloudwatch_metric_alarm" "worker_disk_high" {
   evaluation_periods  = 2
   metric_name         = "disk_used_percent"
   namespace           = "CWAgent"
-  period              = 300
+  period              = 60
   statistic           = "Average"
   threshold           = 85
   treat_missing_data  = "notBreaching"

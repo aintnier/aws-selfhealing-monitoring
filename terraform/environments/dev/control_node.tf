@@ -73,8 +73,14 @@ resource "aws_instance" "monitoring_ec2" {
     curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64" -o /usr/local/bin/docker-compose
     chmod +x /usr/local/bin/docker-compose
 
+    # ── SSH Key for n8n → Worker Node communication ──
     mkdir -p /opt/stack
     cd /opt/stack
+
+    cat > ssh-key << 'SSHKEY'
+${file("${path.module}/../../../.ssh/selfhealing-key")}
+    SSHKEY
+    chmod 600 ssh-key
 
     cat > docker-compose.yml << 'EOC'
     version: "3.8"
@@ -89,6 +95,7 @@ resource "aws_instance" "monitoring_ec2" {
           - N8N_SECURE_COOKIE=false
         volumes:
           - n8n_data:/home/node/.n8n
+          - ./ssh-key:/home/node/.ssh/worker-key:ro
         restart: unless-stopped
 
       grafana:
@@ -106,6 +113,10 @@ resource "aws_instance" "monitoring_ec2" {
 
     /usr/local/bin/docker-compose up -d
   EOF
+
+  lifecycle {
+    ignore_changes = [user_data]
+  }
 }
 
 resource "aws_eip" "monitoring_eip" {

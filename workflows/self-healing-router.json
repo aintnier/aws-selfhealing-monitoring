@@ -1,0 +1,208 @@
+{
+  "name": "Self-Healing Router",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cloudwatch-alerts",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "cloudwatch-alerts"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.headers['x-amz-sns-message-type'] }}",
+              "value2": "SubscriptionConfirmation"
+            }
+          ]
+        }
+      },
+      "name": "Is SNS Subscription?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ typeof $json.body === 'string' ? JSON.parse($json.body).SubscribeURL : $json.body.SubscribeURL }}",
+        "options": {}
+      },
+      "name": "Confirm Subscription",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse the SNS message to extract CloudWatch alarm details\nconst body = typeof $input.first().json.body === 'string' \n  ? JSON.parse($input.first().json.body) \n  : $input.first().json.body;\n\nconst snsMessage = typeof body.Message === 'string' \n  ? JSON.parse(body.Message) \n  : body.Message;\n\nreturn [{\n  json: {\n    alarmName: snsMessage.AlarmName || 'unknown',\n    newState: snsMessage.NewStateValue || 'unknown',\n    oldState: snsMessage.OldStateValue || 'unknown',\n    reason: snsMessage.NewStateReason || '',\n    metricName: snsMessage.Trigger?.MetricName || '',\n    namespace: snsMessage.Trigger?.Namespace || '',\n    instanceId: snsMessage.Trigger?.Dimensions?.[0]?.value || '',\n    timestamp: body.Timestamp || new Date().toISOString(),\n    rawMessage: snsMessage\n  }\n}];"
+      },
+      "name": "Parse Alarm",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "" },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.newState }}",
+              "rightValue": "ALARM",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "name": "Is ALARM State?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.alarmName }}",
+                    "rightValue": "cpu-high",
+                    "operator": { "type": "string", "operation": "contains" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "CPU"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.alarmName }}",
+                    "rightValue": "memory-high",
+                    "operator": { "type": "string", "operation": "contains" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Memory"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.alarmName }}",
+                    "rightValue": "disk-high",
+                    "operator": { "type": "string", "operation": "contains" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Disk"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "name": "Route by Alarm",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1120, 400]
+    },
+    {
+      "parameters": {
+        "workflowId": "QY72GiBDC6SD2LaX"
+      },
+      "name": "Trigger CPU Healing",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "workflowId": "nMjUVZ2gaIfcJpoQ"
+      },
+      "name": "Trigger Memory Healing",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [1340, 400]
+    },
+    {
+      "parameters": {
+        "workflowId": "3zu106z5UCImbf12"
+      },
+      "name": "Trigger Disk Healing",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [1340, 600]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://grafana:3000/api/annotations",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: '[INFO] Alarm resolved: ' + $('Parse Alarm').first().json.alarmName + ' → State: OK', tags: ['self-healing', 'resolved'] }) }}"
+      },
+      "name": "Annotation - Resolved",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 600],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "3ZUB5dPlNwNIeiR0",
+          "name": "Header Auth account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [{ "node": "Is SNS Subscription?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Is SNS Subscription?": {
+      "main": [
+        [{ "node": "Confirm Subscription", "type": "main", "index": 0 }],
+        [{ "node": "Parse Alarm", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse Alarm": {
+      "main": [
+        [{ "node": "Is ALARM State?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Is ALARM State?": {
+      "main": [
+        [{ "node": "Route by Alarm", "type": "main", "index": 0 }],
+        [{ "node": "Annotation - Resolved", "type": "main", "index": 0 }]
+      ]
+    },
+    "Route by Alarm": {
+      "main": [
+        [{ "node": "Trigger CPU Healing", "type": "main", "index": 0 }],
+        [{ "node": "Trigger Memory Healing", "type": "main", "index": 0 }],
+        [{ "node": "Trigger Disk Healing", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

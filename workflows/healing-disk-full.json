@@ -1,0 +1,165 @@
+{
+  "name": "Healing 4 - Disk Full",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Alarm Received",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "command": "docker system prune -af 2>/dev/null; sudo journalctl --vacuum-size=50M 2>/dev/null; sudo rm -rf /tmp/chaos-* /tmp/*.tmp 2>/dev/null; echo 'Cleanup done'; df -h / | tail -1 | awk '{print $5}' | tr -d '%'"
+      },
+      "name": "L1 - Disk Cleanup",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": {
+        "sshPassword": {
+          "id": "AZJNKVBkx1kjta7Z",
+          "name": "Worker Node SSH"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 60,
+        "unit": "seconds"
+      },
+      "name": "Wait 60s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "command": "df -h / | tail -1 | awk '{print $5}' | tr -d '%'"
+      },
+      "name": "Check Disk",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "credentials": {
+        "sshPassword": {
+          "id": "AZJNKVBkx1kjta7Z",
+          "name": "Worker Node SSH"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "" },
+          "conditions": [
+            {
+              "leftValue": "={{ parseFloat($json.stdout) }}",
+              "rightValue": 85,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "name": "Still Full?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "command": "sudo reboot"
+      },
+      "name": "L2 - Reboot Instance",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [1340, 200],
+      "credentials": {
+        "sshPassword": {
+          "id": "AZJNKVBkx1kjta7Z",
+          "name": "Worker Node SSH"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://grafana:3000/api/annotations",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: '[Healing 4] Disk Full — L1: Cleanup (prune + logs + tmp) — Result: OK — Disk now at ' + $('Check Disk').first().json.stdout.trim() + '%', tags: ['self-healing', 'disk-full'] }) }}"
+      },
+      "name": "Annotation - L1 OK",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "3ZUB5dPlNwNIeiR0",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://grafana:3000/api/annotations",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: '[Healing 4] Disk Full — L1 FAILED — L2: Reboot Instance', tags: ['self-healing', 'disk-full', 'escalation'] }) }}"
+      },
+      "name": "Annotation - L2 Escalation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "3ZUB5dPlNwNIeiR0",
+          "name": "Header Auth account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Alarm Received": {
+      "main": [
+        [{ "node": "L1 - Disk Cleanup", "type": "main", "index": 0 }]
+      ]
+    },
+    "L1 - Disk Cleanup": {
+      "main": [
+        [{ "node": "Wait 60s", "type": "main", "index": 0 }]
+      ]
+    },
+    "Wait 60s": {
+      "main": [
+        [{ "node": "Check Disk", "type": "main", "index": 0 }]
+      ]
+    },
+    "Check Disk": {
+      "main": [
+        [{ "node": "Still Full?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Still Full?": {
+      "main": [
+        [{ "node": "L2 - Reboot Instance", "type": "main", "index": 0 }],
+        [{ "node": "Annotation - L1 OK", "type": "main", "index": 0 }]
+      ]
+    },
+    "L2 - Reboot Instance": {
+      "main": [
+        [{ "node": "Annotation - L2 Escalation", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

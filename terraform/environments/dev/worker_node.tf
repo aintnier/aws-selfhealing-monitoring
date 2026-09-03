@@ -45,6 +45,7 @@ resource "aws_instance" "worker_node" {
   vpc_security_group_ids = [aws_security_group.worker_sg.id]
   key_name               = aws_key_pair.selfhealing_key.key_name
   iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
+  monitoring             = true
 
   tags = {
     Name = "${var.project_name}-worker-node"
@@ -140,5 +141,57 @@ resource "aws_instance" "worker_node" {
 
 
     /usr/local/bin/docker-compose up -d
+
+    # ── Chaos Testing Scripts ──
+    mkdir -p /opt/chaos
+
+    cat > /opt/chaos/chaos-container-crash.sh << 'CHAOS1'
+#!/bin/bash
+echo "[CHAOS] Scenario 1: Application Crash"
+echo "[CHAOS] Stopping Nginx container..."
+docker stop nginx
+echo "[CHAOS] Nginx container stopped."
+    CHAOS1
+
+    cat > /opt/chaos/chaos-cpu.sh << 'CHAOS2'
+#!/bin/bash
+DURATION=$${1:-300}
+echo "[CHAOS] Scenario 2: CPU Overload for $${DURATION}s"
+stress-ng --cpu 0 --timeout $${DURATION}s
+echo "[CHAOS] CPU stress test completed."
+    CHAOS2
+
+    cat > /opt/chaos/chaos-memory.sh << 'CHAOS3'
+#!/bin/bash
+DURATION=$${1:-300}
+echo "[CHAOS] Scenario 3: Memory Leak for $${DURATION}s"
+TOTAL_MB=$(free -m | awk '/^Mem:/{print $$2}')
+USED_MB=$(free -m | awk '/^Mem:/{print $$3}')
+TARGET_MB=$$(( (TOTAL_MB * 88) / 100 ))
+ALLOC_MB=$$(( TARGET_MB - USED_MB ))
+echo "[CHAOS] Allocating $${ALLOC_MB}MB to reach exactly 88%..."
+python3 -c "a = bytearray($${ALLOC_MB} * 1024 * 1024); import time; time.sleep($${DURATION})"
+echo "[CHAOS] Memory stress test completed."
+    CHAOS3
+
+    cat > /opt/chaos/chaos-disk.sh << 'CHAOS4'
+#!/bin/bash
+echo "[CHAOS] Scenario 4: Disk Full"
+TOTAL_KB=$(df / | tail -1 | awk '{print $$2}')
+USED_KB=$(df / | tail -1 | awk '{print $$3}')
+TARGET_KB=$(( (TOTAL_KB * 90) / 100 ))
+FILL_KB=$(( TARGET_KB - USED_KB ))
+FILL_MB=$(( FILL_KB / 1024 ))
+echo "[CHAOS] Creating $${FILL_MB}MB bloat file..."
+dd if=/dev/zero of=/opt/chaos/chaos-disk-bloat bs=1M count=$$FILL_MB status=progress 2>&1
+echo "[CHAOS] Disk filled. Current usage:"
+df -h /
+    CHAOS4
+
+    chmod +x /opt/chaos/*.sh
   EOF
+
+  lifecycle {
+    ignore_changes = [user_data]
+  }
 }
