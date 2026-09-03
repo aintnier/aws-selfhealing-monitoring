@@ -45,3 +45,9 @@ resource "aws_iam_instance_profile" "ec2_profile" {
   name = "${var.project_name}-ec2-profile"
   role = aws_iam_role.ec2_ssm_role.name
 }
+
+# EC2 Read Only — allows Grafana to query EC2 API for dynamic instance discovery
+resource "aws_iam_role_policy_attachment" "ec2_readonly_policy" {
+  role       = aws_iam_role.ec2_ssm_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess"
+}

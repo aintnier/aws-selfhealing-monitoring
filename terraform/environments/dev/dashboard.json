@@ -1,0 +1,230 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cftvm6okxqf40c"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 4,
+      "title": "Status Check Failed (Stress Test 1)",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cftvm6okxqf40c"
+          },
+          "dimensions": {
+            "InstanceId": "$InstanceId"
+          },
+          "id": "queryA",
+          "matchExact": true,
+          "metricEditorMode": 0,
+          "metricName": "StatusCheckFailed",
+          "metricQueryType": 0,
+          "namespace": "AWS/EC2",
+          "period": "60",
+          "queryMode": "Metrics",
+          "region": "eu-south-1",
+          "statistic": "Maximum"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "index": 0,
+                  "text": "UP",
+                  "color": "green"
+                },
+                "1": {
+                  "index": 1,
+                  "text": "DOWN",
+                  "color": "red"
+                }
+              },
+              "type": "value"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cftvm6okxqf40c"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 1,
+      "title": "CPU Utilization (Stress Test 2)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cftvm6okxqf40c"
+          },
+          "dimensions": {
+            "InstanceId": "$InstanceId"
+          },
+          "id": "queryA",
+          "matchExact": true,
+          "metricEditorMode": 0,
+          "metricName": "CPUUtilization",
+          "metricQueryType": 0,
+          "namespace": "AWS/EC2",
+          "period": "60",
+          "queryMode": "Metrics",
+          "region": "eu-south-1",
+          "statistic": "Average"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cftvm6okxqf40c"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "id": 2,
+      "title": "Memory Usage (Stress Test 3)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cftvm6okxqf40c"
+          },
+          "dimensions": {
+            "InstanceId": "$InstanceId"
+          },
+          "id": "queryA",
+          "matchExact": true,
+          "metricEditorMode": 0,
+          "metricName": "mem_used_percent",
+          "metricQueryType": 0,
+          "namespace": "CWAgent",
+          "period": "60",
+          "queryMode": "Metrics",
+          "region": "eu-south-1",
+          "statistic": "Average"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "cftvm6okxqf40c"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "id": 3,
+      "title": "Disk Usage (Stress Test 4)",
+      "type": "gauge",
+      "targets": [
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "cftvm6okxqf40c"
+          },
+          "dimensions": {
+            "InstanceId": "$InstanceId",
+            "device": "nvme0n1p1",
+            "fstype": "xfs",
+            "path": "/"
+          },
+          "id": "queryA",
+          "matchExact": true,
+          "metricEditorMode": 0,
+          "metricName": "disk_used_percent",
+          "metricQueryType": 0,
+          "namespace": "CWAgent",
+          "period": "300",
+          "queryMode": "Metrics",
+          "region": "eu-south-1",
+          "statistic": "Average"
+        }
+      ]
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": [],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "datasource": {
+          "type": "cloudwatch",
+          "uid": "cftvm6okxqf40c"
+        },
+        "definition": "ec2_instance_attribute(eu-south-1, InstanceId, {\"instance-state-name\":[\"running\"]})",
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "name": "InstanceId",
+        "options": [],
+        "query": "ec2_instance_attribute(eu-south-1, InstanceId, {\"instance-state-name\":[\"running\"]})",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Self-Healing Worker Node Health",
+  "uid": "selfhealing-worker",
+  "version": 1
+}

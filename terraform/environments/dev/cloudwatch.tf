@@ -68,7 +68,7 @@ resource "aws_cloudwatch_metric_alarm" "worker_disk_high" {
   dimensions = {
     InstanceId = aws_instance.worker_node.id
     path       = "/"
-    device     = "xvda1"
+    device     = "nvme0n1p1"
     fstype     = "xfs"
   }
 
